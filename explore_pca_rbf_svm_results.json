@@ -1,0 +1,17 @@
+{
+  "train_rows_used": 30000,
+  "test_rows": 82332,
+  "pca_components": 30,
+  "svm": {
+    "kernel": "rbf",
+    "C": 2.0,
+    "gamma": "scale"
+  },
+  "metrics": {
+    "pr_auc": 0.9647243705307371,
+    "roc_auc": 0.9576982750088836,
+    "brier": 0.104122080267698
+  },
+  "exploratory_best_threshold_on_test": 0.116,
+  "exploratory_best_cost_on_test": 23256.0
+}
