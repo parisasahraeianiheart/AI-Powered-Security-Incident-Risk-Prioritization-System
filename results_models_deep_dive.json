@@ -1,0 +1,107 @@
+{
+  "data": {
+    "train_rows": 175341,
+    "test_rows": 82332,
+    "train_pos_rate": 0.6806223302022916,
+    "test_pos_rate": 0.5506000097167566
+  },
+  "split_strategy": "Used official UNSW-NB15 predefined training/testing split as the final holdout. All CV and threshold selection performed only on training set to avoid leakage.",
+  "cost_model": {
+    "C_FP": 1.0,
+    "C_FN": 20.0
+  },
+  "models": {
+    "logreg": {
+      "threshold_selected_on_train_oof": 0.014,
+      "test_metrics": {
+        "pr_auc": 0.9666824987364253,
+        "roc_auc": 0.9559427783249587,
+        "brier": 0.09207963643909761
+      },
+      "test_at_threshold": {
+        "threshold": 0.014,
+        "tn": 20322,
+        "fp": 16678,
+        "fn": 12,
+        "tp": 45320,
+        "precision": 0.7309913223007194,
+        "recall": 0.999735286331951,
+        "fpr": 0.45075675675675675
+      },
+      "artifacts": {
+        "train_cost_curve": "cost_curve_train_logreg.png",
+        "test_pr_curve": "pr_curve_test_logreg.png",
+        "test_cost_curve": "cost_curve_test_logreg.png"
+      }
+    },
+    "svm_linear": {
+      "threshold_selected_on_train_oof": 0.226,
+      "test_metrics": {
+        "pr_auc": 0.9508828943539405,
+        "roc_auc": 0.9418900192215509,
+        "brier": 0.13945281676271937
+      },
+      "test_at_threshold": {
+        "threshold": 0.226,
+        "tn": 17729,
+        "fp": 19271,
+        "fn": 93,
+        "tp": 45239,
+        "precision": 0.7012711207564719,
+        "recall": 0.9979484690726198,
+        "fpr": 0.5208378378378379
+      },
+      "artifacts": {
+        "train_cost_curve": "cost_curve_train_svm_linear.png",
+        "test_pr_curve": "pr_curve_test_svm_linear.png",
+        "test_cost_curve": "cost_curve_test_svm_linear.png"
+      }
+    },
+    "xgboost": {
+      "threshold_selected_on_train_oof": 0.056,
+      "test_metrics": {
+        "pr_auc": 0.9889522180454605,
+        "roc_auc": 0.9850222586037904,
+        "brier": 0.05987154692411423
+      },
+      "test_at_threshold": {
+        "threshold": 0.056,
+        "tn": 21365,
+        "fp": 15635,
+        "fn": 0,
+        "tp": 45332,
+        "precision": 0.7435497892302393,
+        "recall": 1.0,
+        "fpr": 0.4225675675675676
+      },
+      "artifacts": {
+        "train_cost_curve": "cost_curve_train_xgboost.png",
+        "test_pr_curve": "pr_curve_test_xgboost.png",
+        "test_cost_curve": "cost_curve_test_xgboost.png"
+      }
+    },
+    "lightgbm": {
+      "threshold_selected_on_train_oof": 0.026000000000000002,
+      "test_metrics": {
+        "pr_auc": 0.9882910931848964,
+        "roc_auc": 0.9840684925749008,
+        "brier": 0.0679360072731885
+      },
+      "test_at_threshold": {
+        "threshold": 0.026000000000000002,
+        "tn": 21358,
+        "fp": 15642,
+        "fn": 6,
+        "tp": 45326,
+        "precision": 0.743439181209815,
+        "recall": 0.9998676431659754,
+        "fpr": 0.4227567567567568
+      },
+      "artifacts": {
+        "train_cost_curve": "cost_curve_train_lightgbm.png",
+        "test_pr_curve": "pr_curve_test_lightgbm.png",
+        "test_cost_curve": "cost_curve_test_lightgbm.png"
+      }
+    }
+  }
+}
