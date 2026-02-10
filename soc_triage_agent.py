@@ -10,10 +10,14 @@ for operational triage simulation; for strict methodology use model.py OOF thres
 """
 
 import argparse
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
+import json
 import numpy as np
+import os
 import pandas as pd
+import urllib.error
+import urllib.request
 import warnings
 
 from preprocessing import get_feature_types
@@ -31,6 +35,58 @@ from utils import (
 from model import get_pipeline, best_recall_under_precision
 
 warnings.filterwarnings("ignore")
+
+_SYSTEM_PROMPT = (
+    "You are a SOC triage copilot. Summarize alert queues and propose safe, practical next steps. "
+    "Be concise, avoid speculation, and clearly separate observed facts from recommendations."
+)
+
+
+def llm_soc_brief(
+    context: Dict[str, Any],
+    api_key: str,
+    model: str,
+    timeout_s: int = 30,
+) -> str:
+    """
+    Simple LLM call for SOC summarization (stdlib-only).
+
+    To enable: set env var OPENAI_API_KEY and run with --use_llm.
+    """
+    url = "https://api.openai.com/v1/chat/completions"
+    user_prompt = (
+        "Given the JSON context below, produce:\n"
+        "1) Executive summary (3-6 sentences)\n"
+        "2) Prioritized recommended analyst actions (5-10 bullets)\n"
+        "3) Escalation criteria (bullets)\n"
+        "4) Key questions / data to pull next (bullets)\n\n"
+        "Keep it SOC-friendly and concrete. Avoid vendor-specific claims.\n\n"
+        f"CONTEXT_JSON:\n{json.dumps(context, indent=2)}"
+    )
+
+    payload = {
+        "model": model,
+        "temperature": 0.2,
+        "messages": [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+    }
+
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
+
+    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+        raw = resp.read().decode("utf-8")
+        data = json.loads(raw)
+        return data["choices"][0]["message"]["content"].strip()
 
 
 # -----------------------------
@@ -95,13 +151,11 @@ def main():
     parser.add_argument("--min_precision", type=float, default=0.70)
     parser.add_argument("--top_alerts", type=int, default=10)
     parser.add_argument("--baseline_threshold", type=float, default=0.5)
+    parser.add_argument("--use_llm", action="store_true", help="Use LLM to summarize and suggest final next steps.")
+    parser.add_argument("--llm_model", default=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"))
+    parser.add_argument("--llm_timeout_s", type=int, default=30)
+    parser.add_argument("--llm_max_alerts", type=int, default=10)
     args = parser.parse_args()
-
-    # Load official split
-    if not TRAIN_CSV.exists() or not TEST_CSV.exists():
-        raise FileNotFoundError(
-            f"Expected {TRAIN_CSV.name} and {TEST_CSV.name} in the project root."
-        )
 
     train_df = pd.read_csv(TRAIN_CSV)
     test_df = pd.read_csv(TEST_CSV)
@@ -174,6 +228,8 @@ def main():
         print(f"{rank:02d}. idx={int(i)}  p={prob_test[i]:.3f}  decision={decision}")
 
     print("\n--- Example Explanations + Action Suggestions ---")
+    # Keep these structured so we can optionally feed an LLM.
+    example_alerts: List[Dict[str, Any]] = []
     for i in top_idx[:min(5, topn)]:
         row = X_test.iloc[int(i)]
         explanation, actions = explain_alert_heuristic(row, float(prob_test[i]))
@@ -182,11 +238,70 @@ def main():
         print("Suggested actions:")
         for a in actions:
             print(" -", a)
+        example_alerts.append(
+            {
+                "idx": int(i),
+                "p": float(prob_test[i]),
+                "decision": "ESCALATE" if float(prob_test[i]) >= float(best_t) else "DEPRIORITIZE",
+                "explanation": explanation,
+                "suggested_actions": actions,
+            }
+        )
+
+    # --- Optional "agentic" brief: LLM summarizes + suggests final next steps
+    if args.use_llm:
+        api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        if not api_key:
+            print("\n--- Agentic AI Brief (skipped) ---")
+            print("Set env var OPENAI_API_KEY to enable LLM summarization.")
+        else:
+            llm_top_n = min(int(args.llm_max_alerts), int(topn))
+            llm_alerts: List[Dict[str, Any]] = []
+            for i in top_idx[:llm_top_n]:
+                row = X_test.iloc[int(i)]
+                explanation, actions = explain_alert_heuristic(row, float(prob_test[i]))
+                llm_alerts.append(
+                    {
+                        "idx": int(i),
+                        "p": float(prob_test[i]),
+                        "decision": "ESCALATE" if float(prob_test[i]) >= float(best_t) else "DEPRIORITIZE",
+                        "explanation": explanation,
+                        "suggested_actions": actions,
+                    }
+                )
+
+            llm_context: Dict[str, Any] = {
+                "model": args.model,
+                "mode": args.mode,
+                "cost_model": {"C_FP": float(C_FP), "C_FN": float(C_FN)},
+                "threshold": float(best_t),
+                "metrics_at_threshold": stats,
+                "top_alerts": llm_alerts,
+                "notes": [
+                    "LLM output is advisory; validate against logs and environment context.",
+                    "Decisions above are computed from deterministic metrics; LLM is used only for summarization/suggestions.",
+                ],
+            }
+
+            print("\n--- Agentic AI Brief (LLM) ---")
+            try:
+                brief = llm_soc_brief(
+                    llm_context,
+                    api_key=api_key,
+                    model=str(args.llm_model),
+                    timeout_s=int(args.llm_timeout_s),
+                )
+                print(brief)
+            except (urllib.error.URLError, urllib.error.HTTPError, KeyError, json.JSONDecodeError) as e:
+                print(f"LLM call failed: {e}")
+                print("Falling back to heuristic explanations above.")
 
     print("\n--- Agent Guardrails / Limitations ---")
     print("1) Agent decisions are computed from deterministic metrics (no free-form hallucinated actions).")
     print("2) If data distribution shifts, thresholds should be re-optimized and probabilities recalibrated (Step 7).")
     print("3) This agent uses heuristic explanations; you can optionally replace/augment with SHAP local explanations.")
+    if args.use_llm:
+        print("4) LLM brief (if enabled) is advisory; treat it as a drafting aid, not ground truth.")
 
 
 if __name__ == "__main__":

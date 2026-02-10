@@ -1,0 +1,157 @@
+"""
+Streamlit dashboard for the UNSW-NB15 SOC triage project.
+
+Shows:
+- Model evaluation outputs produced by `model.py` (JSON + saved plots)
+- SHAP explainability plots produced by `XGBOOSTexpalin.py`
+
+Run:
+  streamlit run streamlit_app.py
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+import streamlit as st
+
+
+ROOT = Path(__file__).resolve().parent
+
+RESULTS_JSON = ROOT / "results_models_deep_dive.json"
+
+# model.py artifacts (saved in CWD = project root)
+EDA_PLOTS = [
+    ROOT / "eda_class_distribution.png",
+    ROOT / "eda_attack_categories.png",
+]
+
+# XGBOOSTexpalin.py artifacts
+SHAP_PLOTS = [
+    ROOT / "shap_bar_xgb.png",
+    ROOT / "shap_summary_xgb.png",
+    ROOT / "shap_waterfall_example0.png",
+]
+
+
+def _read_json(path: Path) -> Optional[Dict[str, Any]]:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return None
+
+
+def _show_image_if_exists(path: Path, caption: str):
+    if path.exists():
+        st.image(str(path), caption=caption, use_container_width=True)
+    else:
+        st.info(f"Missing: `{path.name}` (run the generating script).")
+
+
+def _run_script(script_name: str, timeout_s: int = 600) -> str:
+    """
+    Run a script in the project root and return combined output.
+    Keeps it simple: best-effort, no streaming logs.
+    """
+    cmd = ["python3", str(ROOT / script_name)]
+    p = subprocess.run(
+        cmd,
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=timeout_s,
+    )
+    out = (p.stdout or "") + ("\n" + p.stderr if p.stderr else "")
+    return out.strip()
+
+
+st.set_page_config(page_title="SOC Triage Dashboard", layout="wide")
+
+st.title("SOC Triage Dashboard (UNSW-NB15)")
+st.caption("Displays outputs from `model.py` and `XGBOOSTexpalin.py`.")
+
+with st.sidebar:
+    st.header("Actions")
+    st.write("These can take a while depending on your machine.")
+
+    if st.button("Run model.py (regenerate results + plots)", use_container_width=True):
+        with st.spinner("Running model.py..."):
+            try:
+                logs = _run_script("model.py", timeout_s=3600)
+                st.session_state["model_logs"] = logs
+            except Exception as e:
+                st.session_state["model_logs"] = f"Failed to run model.py: {e}"
+
+    if st.button("Run XGBOOSTexpalin.py (regenerate SHAP plots)", use_container_width=True):
+        with st.spinner("Running XGBOOSTexpalin.py..."):
+            try:
+                logs = _run_script("XGBOOSTexpalin.py", timeout_s=3600)
+                st.session_state["shap_logs"] = logs
+            except Exception as e:
+                st.session_state["shap_logs"] = f"Failed to run XGBOOSTexpalin.py: {e}"
+
+    with st.expander("Latest logs", expanded=False):
+        if "model_logs" in st.session_state:
+            st.code(st.session_state["model_logs"], language="text")
+        if "shap_logs" in st.session_state:
+            st.code(st.session_state["shap_logs"], language="text")
+
+
+col_left, col_right = st.columns([1.1, 0.9], gap="large")
+
+with col_left:
+    st.subheader("Model results (from `model.py`)")
+    results = _read_json(RESULTS_JSON)
+    if not results:
+        st.warning(f"Missing or unreadable `{RESULTS_JSON.name}`. Run `model.py` to generate it.")
+    else:
+        model_keys = list((results.get("models") or {}).keys())
+        if not model_keys:
+            st.warning("No models found in results JSON.")
+        else:
+            picked = st.selectbox("Select model", model_keys, index=0)
+            m = results["models"][picked]
+
+            st.markdown("**Threshold (selected on train OOF):** " + f"`{m.get('threshold_selected_on_train_oof')}`")
+
+            c1, c2, c3 = st.columns(3)
+            test_metrics = m.get("test_metrics") or {}
+            c1.metric("PR-AUC", f"{test_metrics.get('pr_auc', float('nan')):.4f}")
+            c2.metric("ROC-AUC", f"{test_metrics.get('roc_auc', float('nan')):.4f}")
+            c3.metric("Brier", f"{test_metrics.get('brier', float('nan')):.4f}")
+
+            st.markdown("**At-threshold confusion + rates (test):**")
+            st.json(m.get("test_at_threshold") or {})
+
+            artifacts = (m.get("artifacts") or {})
+            pr_plot = ROOT / str(artifacts.get("test_pr_curve", ""))
+            train_cost_plot = ROOT / str(artifacts.get("train_cost_curve", ""))
+            test_cost_plot = ROOT / str(artifacts.get("test_cost_curve", ""))
+
+            st.markdown("**Saved plots**")
+            _show_image_if_exists(pr_plot, f"PR curve (test) — {picked}")
+            _show_image_if_exists(train_cost_plot, f"Cost curve (train OOF) — {picked}")
+            _show_image_if_exists(test_cost_plot, f"Cost curve (test) — {picked}")
+
+    st.subheader("EDA plots")
+    for p in EDA_PLOTS:
+        _show_image_if_exists(p, p.name)
+
+with col_right:
+    st.subheader("XGBoost SHAP explainability (from `XGBOOSTexpalin.py`)")
+    for p in SHAP_PLOTS:
+        _show_image_if_exists(p, p.name)
+
+    st.subheader("Notes")
+    st.write(
+        "- This app only **reads files** generated by the scripts.\n"
+        "- If your artifacts are missing, use the sidebar buttons or run:\n"
+        "  - `python3 model.py`\n"
+        "  - `python3 XGBOOSTexpalin.py`"
+    )
+
