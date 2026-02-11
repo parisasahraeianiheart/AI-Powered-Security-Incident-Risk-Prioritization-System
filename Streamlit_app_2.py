@@ -130,11 +130,7 @@ with st.sidebar:
 
 
     st.divider()
-    st.markdown("**Download report**")
 
-
-
-    st.divider()
     st.markdown("**Navigation**")
     page = st.radio(
         "Go to",
