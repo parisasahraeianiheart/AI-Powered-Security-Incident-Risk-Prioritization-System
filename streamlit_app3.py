@@ -255,8 +255,3 @@ with right:
         else:
             st.write("—")
 
-        # Also show the queue-level LLM brief here (optional duplicate, but useful)
-        if llm_brief:
-            st.divider()
-            st.markdown("### AI Brief (Queue-level)")
-            st.write(llm_brief)
