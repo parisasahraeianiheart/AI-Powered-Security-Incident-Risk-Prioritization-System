@@ -38,6 +38,15 @@ def load_json_path(path: Path) -> Optional[Dict[str, Any]]:
         return None
 
 
+def metric_get(triage: Dict[str, Any], path: list[str], default=None):
+    cur: Any = triage
+    for k in path:
+        if not isinstance(cur, dict) or k not in cur:
+            return default
+        cur = cur[k]
+    return cur
+
+
 def to_alerts_df(triage: Dict[str, Any]) -> pd.DataFrame:
     alerts = triage.get("top_alerts", []) or triage.get("alerts", []) or []
     if not alerts:
@@ -50,7 +59,7 @@ def to_alerts_df(triage: Dict[str, Any]) -> pd.DataFrame:
         if col not in df.columns:
             df[col] = None
 
-    # make sure types are nice
+    # ensure types are nice
     if "p" in df.columns:
         df["p"] = pd.to_numeric(df["p"], errors="coerce")
 
@@ -60,13 +69,27 @@ def to_alerts_df(triage: Dict[str, Any]) -> pd.DataFrame:
     return df.sort_values("p", ascending=False, na_position="last")
 
 
-def metric_get(triage: Dict[str, Any], path: list[str], default=None):
-    cur: Any = triage
-    for k in path:
-        if not isinstance(cur, dict) or k not in cur:
-            return default
-        cur = cur[k]
-    return cur
+def get_llm_brief(triage: Dict[str, Any]) -> Optional[str]:
+    """
+    triage_output.json stores LLM output under:
+      triage["llm"]["brief"]
+    """
+    brief = metric_get(triage, ["llm", "brief"], None)
+    if isinstance(brief, str) and brief.strip():
+        return brief.strip()
+    return None
+
+
+def get_llm_status(triage: Dict[str, Any]) -> str:
+    enabled = metric_get(triage, ["llm", "enabled"], False)
+    model = metric_get(triage, ["llm", "model"], None)
+    err = metric_get(triage, ["llm", "error"], None)
+
+    if enabled and not err and model:
+        return f"✅ LLM enabled ({model})"
+    if enabled and err:
+        return f"⚠️ LLM enabled, but failed: {err}"
+    return "ℹ️ LLM not enabled"
 
 
 # -----------------------------
@@ -106,42 +129,59 @@ with st.sidebar:
 
     decision_filter = st.multiselect("Decision", ["ESCALATE", "DEPRIORITIZE"], default=["ESCALATE"])
     p_min, p_max = st.slider("Probability range (p)", 0.0, 1.0, (0.0, 1.0), 0.01)
-
     search_text = st.text_input("Search (idx / explanation text)", value="")
-
-
-
 
 if not triage:
     st.stop()
 
+
+# -----------------------------
+# Queue-level AI Brief (TOP)
+# -----------------------------
+llm_brief = get_llm_brief(triage)
+llm_status = get_llm_status(triage)
+
+with st.expander(f"🤖 AI Brief (queue-level) — {llm_status}", expanded=bool(llm_brief)):
+    if llm_brief:
+        st.write(llm_brief)
+    else:
+        st.info("No AI brief found in JSON. Run soc_triage_agent.py with LLM enabled so it writes triage['llm']['brief'].")
+
+
+st.divider()
+
+
 # -----------------------------
 # Top summary KPIs
 # -----------------------------
-model_name = triage.get("model", "—")
-mode = triage.get("mode", "—")
-c_fp = metric_get(triage, ["cost_model", "C_FP"], "—")
-c_fn = metric_get(triage, ["cost_model", "C_FN"], "—")
+model_name = metric_get(triage, ["run", "model"], triage.get("model", "—"))
+mode = metric_get(triage, ["run", "mode"], triage.get("mode", "—"))
+c_fp = metric_get(triage, ["run", "cost_model", "C_FP"], metric_get(triage, ["cost_model", "C_FP"], "—"))
+c_fn = metric_get(triage, ["run", "cost_model", "C_FN"], metric_get(triage, ["cost_model", "C_FN"], "—"))
 
-threshold = triage.get("threshold", triage.get("best_threshold", None))
-cost_reduction = triage.get("cost_reduction_vs_baseline", triage.get("cost_reduction", None))
+threshold = metric_get(triage, ["run", "threshold_selected"], triage.get("threshold", None))
+baseline_t = metric_get(triage, ["run", "baseline_threshold"], None)
 
 metrics_at_t = triage.get("metrics_at_threshold", {}) or {}
 precision = metrics_at_t.get("precision", None)
 recall = metrics_at_t.get("recall", None)
 fpr = metrics_at_t.get("fpr", None)
 
-k1, k2, k3, k4, k5 = st.columns([1.2, 1.0, 1.0, 1.0, 1.0])
-k4.metric("Precision", f"{precision:.3f}" if isinstance(precision, (int, float)) else "—")
-k5.metric("Recall", f"{recall:.3f}" if isinstance(recall, (int, float)) else "—")
+k1, k2, k3, k4, k5, k6 = st.columns([1.2, 1.2, 1.0, 1.0, 1.0, 1.0])
+k1.metric("Model", str(model_name))
+k2.metric("Mode", str(mode))
+k3.metric("Threshold", f"{float(threshold):.3f}" if isinstance(threshold, (int, float)) else "—")
+k4.metric("C_FP", str(c_fp))
+k5.metric("C_FN", str(c_fn))
+k6.metric("Baseline t", f"{float(baseline_t):.2f}" if isinstance(baseline_t, (int, float)) else "—")
 
-k6, k7, k8 = st.columns(3)
-k6.metric("FPR", f"{fpr:.3f}" if isinstance(fpr, (int, float)) else "—")
-
-if isinstance(cost_reduction, (int, float)):
-    st.caption(f"Estimated cost reduction vs baseline threshold: **{100*cost_reduction:.2f}%**")
+m1, m2, m3 = st.columns(3)
+m1.metric("Precision", f"{precision:.3f}" if isinstance(precision, (int, float)) else "—")
+m2.metric("Recall", f"{recall:.3f}" if isinstance(recall, (int, float)) else "—")
+m3.metric("FPR", f"{fpr:.3f}" if isinstance(fpr, (int, float)) else "—")
 
 st.divider()
+
 
 # -----------------------------
 # Alert Queue + Risk Distribution
@@ -169,7 +209,7 @@ with left:
                 | df["explanation"].astype(str).str.lower().str.contains(s, na=False)
             ]
 
-        st.caption("Ranked by risk probability (p). Click a row in the table using the selector below.")
+        st.caption("Ranked by risk probability (p). Use the selector on the right to open details.")
 
         show_cols = ["idx", "p", "decision"]
         if "attack_cat" in df.columns:
@@ -178,7 +218,7 @@ with left:
         st.dataframe(
             df[show_cols].reset_index(drop=True),
             use_container_width=True,
-            height=340,
+            height=360,
         )
 
         st.subheader("📊 Risk Distribution")
@@ -190,14 +230,17 @@ with right:
     if alerts_df.empty:
         st.info("Upload a triage_output.json with `top_alerts` to see alert details.")
     else:
-        # pick an alert
         idx_list = alerts_df["idx"].dropna().astype(int).tolist()
         chosen_idx = st.selectbox("Select alert idx", idx_list, index=0)
 
         row = alerts_df[alerts_df["idx"] == chosen_idx].iloc[0].to_dict()
 
         st.markdown(f"**Alert idx:** `{row.get('idx')}`")
-        st.markdown(f"**Probability (p):** `{row.get('p'):.3f}`" if isinstance(row.get("p"), (int, float)) else "**Probability (p):** —")
+        st.markdown(
+            f"**Probability (p):** `{row.get('p'):.3f}`"
+            if isinstance(row.get("p"), (int, float))
+            else "**Probability (p):** —"
+        )
         st.markdown(f"**Decision:** `{row.get('decision')}`")
 
         st.divider()
@@ -212,8 +255,7 @@ with right:
         else:
             st.write("—")
 
-        # optional: show the LLM brief if present
-        llm_brief = triage.get("llm_brief", None)
+        # Also show the queue-level LLM brief here (optional duplicate, but useful)
         if llm_brief:
             st.divider()
             st.markdown("### AI Brief (Queue-level)")
