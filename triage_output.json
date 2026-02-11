@@ -132,9 +132,9 @@
     }
   ],
   "llm": {
-    "enabled": false,
+    "enabled": true,
     "model": "gpt-4o-mini",
-    "brief": null,
+    "brief": "### Executive Summary\nThe alert queue indicates multiple high-risk network behaviors, all with a risk score of 1.000, suggesting potential spoofing, scanning, or exfiltration activities. The alerts are primarily driven by unusual Time to Live (TTL) values, repeated connections to specific services/ports, and abnormal traffic volume. Immediate action is required to validate these behaviors and mitigate potential threats.\n\n### Prioritized Recommended Analyst Actions\n- Validate TTL consistency to identify possible spoofing or scanning artifacts.\n- Check for repeated connections to the same service/port to detect potential scanning or brute-force patterns.\n- Inspect unusual traffic volume and throughput to assess possible data exfiltration or command-and-control (C2) activities.\n- Review logs associated with the top alerts for additional context and corroboration.\n- Document findings and actions taken for each alert to maintain a clear audit trail.\n\n### Escalation Criteria\n- If any of the validated alerts show confirmed malicious activity.\n- If there is a significant increase in traffic volume or unusual patterns that persist after initial investigation.\n- If multiple alerts correlate with known threat indicators or previous incidents.\n\n### Key Questions / Data to Pull Next\n- What are the historical traffic patterns for the affected services/ports?\n- Are there any known vulnerabilities associated with the services being targeted?\n- What are the source IP addresses for the alerts, and do they match any known malicious IP lists?\n- Are there any other alerts or incidents occurring concurrently that may indicate a coordinated attack?\n- What are the specific user accounts or systems involved in the flagged connections?",
     "error": null
   }
 }
