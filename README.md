@@ -1,119 +1,249 @@
-# AI-Powered-Security-Incident-Risk-Prioritization-System
+# AI-Powered Security Incident Risk Prioritization System
 
-Project Methodology – End-to-End Approach
+An end-to-end machine learning system designed to help Security Operations Centers (SOCs) intelligently prioritize network security alerts using predictive analytics, explainable AI, and agentic workflows.
 
-Step 1 — Problem Definition and Modeling Objective
-•	Clearly defined the modeling target as:
-Predict the probability that a network event represents a true security incident.
-•	Framed the problem in operational SOC terms:
-o	Output = p(\text{incident} = 1 | \text{features})
-o	Threshold determines whether an alert should be escalated or deprioritized
-•	Established business relevance by linking model decisions to analyst workload and risk management.
- 
-Step 2 — Data Quality Assessment and Exploratory Data Analysis (EDA)
-•	Performed comprehensive data validation:
-o	Checked for missing values and duplicates
-o	Verified data types and feature distributions
-•	Analyzed class imbalance and event distributions
-•	Generated visualizations for:
-o	Feature histograms
-o	Train vs test comparisons
-o	Attack category distributions
-•	Documented initial insights and potential risks (e.g., imbalance and dataset shift).
- 
-Step 3 — Handling Class Imbalance
-•	Quantified imbalance between normal vs attack traffic
-•	Incorporated imbalance-aware modeling techniques:
-o	Class weighting for logistic regression and SVM
-o	scale_pos_weight for tree-based models
-•	Evaluated metrics suited for imbalanced problems (PR-AUC, recall, cost-based metrics).
- 
-Step 4 — Train/Test Strategy and Leakage Prevention
-•	Used the official UNSW-NB15 predefined train/test split as the final holdout
-•	Ensured:
-o	No information leakage between training and evaluation
-o	Cross-validation used only on training data
-•	Built preprocessing pipelines that were fitted strictly within CV folds.
- 
-Step 5 — Model Exploration and Deployment
-•	Implemented and compared multiple modeling approaches:
-o	Logistic Regression
-o	Linear SVM
-o	Nonlinear SVM
-o	XGBoost
-o	LightGBM
-•	Initially experimented with nonlinear SVM but found it:
-o	Computationally expensive
-o	Less practical at enterprise scale
-•	Transitioned to linear SVM for efficiency and scalability
-•	Explored PCA-based dimensionality reduction + nonlinear SVM, but:
-o	Performance gains were limited
-o	Decided to retain simpler, interpretable linear models.
- 
-Step 6 — Results Analysis and Findings
-•	Evaluated models using:
-o	ROC-AUC
-o	PR-AUC
-o	Brier score
-o	Cost-based thresholds
-•	Identified tree-based models (XGBoost/LightGBM) as top performers
-•	Conducted detailed comparison across:
-o	Threshold-optimized performance
-o	Business cost reduction
-o	Precision/recall tradeoffs.
- 
-Step 7 — Observed Limitations and Future Improvements
-•	Identified key challenges:
-o	Potential distribution shift between train and test
-o	Probability calibration needs
-o	Threshold sensitivity to changing environments
-•	Proposed improvements:
-o	Regular threshold re-optimization
-o	Calibration techniques (Platt scaling / isotonic)
-o	Monitoring for concept drift
-o	Time-based validation in production.
- 
-Step 8 — Model Interpretability
-•	Applied SHAP explainability to the final models
-•	Identified most influential features driving predictions
-•	Generated global and local explanations for SOC analysts
-•	Used insights to validate model logic and fairness.
- 
-Step 9 — AI-Augmented Development Process
-•	Leveraged modern AI coding tools throughout the project:
-o	Cursor
-o	ChatGPT
-o	VS Code Copilot
-•	Used them to:
-o	Debug issues
-o	Refactor code
-o	Improve performance
-o	Standardize structure across Python modules.
- 
-Step 10 — Agentic AI Integration
-•	Built an operational SOC Triage Agent that:
-o	Selects optimal thresholds
-o	Ranks alerts by risk
-o	Generates explanations and suggested actions
-•	Added optional LLM-powered summarization for:
-o	Executive SOC briefings
-o	Action recommendations
-o	Escalation criteria.
- 
-Step 11 — Business Delivery Layer
-•	Implemented a Streamlit dashboard to:
-o	Visualize model outputs
-o	Display prioritized alerts
-o	Present explanations interactively
-•	Transformed technical backend into a user-friendly analyst tool.
- 
-Outcome
-The project evolved from a traditional ML classifier into a full end-to-end SOC decision system that combines:
-•	Predictive modeling
-•	Threshold optimization
-•	Explainability
-•	Agentic workflows
-•	AI-assisted development
-•	User-facing delivery
+This project transforms raw network event data into actionable risk scores that help analysts focus on the most critical threats—reducing alert fatigue and improving response efficiency.
 
-<img width="468" height="639" alt="image" src="https://github.com/user-attachments/assets/c6c4b8de-243f-48e4-8694-dc94437daeea" />
+---
+
+## Project Overview
+
+Modern SOC teams face overwhelming volumes of security alerts. Most are false positives, yet each must be reviewed manually. This project addresses that challenge by building a machine learning system that:
+
+- Predicts the probability that a network event is a true security incident  
+- Prioritizes alerts based on estimated risk  
+- Explains model decisions for analyst transparency  
+- Integrates AI agents to recommend actions  
+- Delivers insights through an interactive dashboard  
+
+The result is a practical decision-support system that bridges advanced analytics with real-world security operations.
+
+---
+
+## Methodology – End-to-End Approach
+
+### Step 1 — Problem Definition and Modeling Objective
+
+- Defined the modeling target as:  
+  **Predict the probability that a network event represents a true security incident**
+- Framed in SOC terms:  
+  - Output = `p(incident = 1 | features)`
+  - A configurable threshold determines whether an alert should be escalated or deprioritized
+- Established direct business impact by linking predictions to:
+  - Analyst workload reduction  
+  - Faster response times  
+  - Improved risk management  
+
+---
+
+### Step 2 — Data Quality Assessment and Exploratory Data Analysis (EDA)
+
+Performed rigorous data validation:
+
+- Checked for missing values and duplicates  
+- Verified data types and feature distributions  
+- Analyzed class imbalance and attack category breakdowns  
+- Compared training vs test distributions  
+- Generated visualizations:
+  - Feature histograms  
+  - Event distributions  
+  - Attack class frequencies  
+
+Key risks such as imbalance and dataset shift were identified early.
+
+---
+
+### Step 3 — Handling Class Imbalance
+
+- Quantified severe imbalance between normal and attack traffic  
+- Applied imbalance-aware techniques:
+  - Class weighting for logistic regression and SVM  
+  - `scale_pos_weight` for tree-based models  
+- Focused on appropriate evaluation metrics:
+  - PR-AUC  
+  - Recall  
+  - Cost-sensitive measures  
+
+---
+
+### Step 4 — Train/Test Strategy and Leakage Prevention
+
+- Used the official **UNSW-NB15 predefined train/test split** as the final holdout  
+- Ensured strict separation between training and evaluation  
+- Prevented information leakage by:
+  - Performing cross-validation only on training data  
+  - Fitting preprocessing pipelines inside CV folds  
+
+---
+
+### Step 5 — Model Exploration and Selection
+
+Implemented and compared multiple approaches:
+
+- Logistic Regression  
+- Linear SVM  
+- Nonlinear SVM  
+- XGBoost  
+- LightGBM  
+
+Findings:
+
+- Nonlinear SVM was computationally expensive and impractical at scale  
+- Linear SVM provided strong performance with much better efficiency  
+- PCA + nonlinear SVM offered limited gains  
+- Final preference shifted toward scalable, interpretable models  
+
+---
+
+### Step 6 — Results Analysis
+
+Models were evaluated using:
+
+- ROC-AUC  
+- PR-AUC  
+- Brier Score  
+- Business cost-based thresholds  
+
+Key conclusions:
+
+- Tree-based models (XGBoost / LightGBM) delivered the best overall performance  
+- Detailed tradeoff analysis between:
+  - Precision vs recall  
+  - Threshold optimization  
+  - Operational cost reduction  
+
+---
+
+### Step 7 — Limitations and Future Improvements
+
+Identified real-world deployment challenges:
+
+- Possible distribution shift between training and production  
+- Need for probability calibration  
+- Sensitivity to changing environments  
+
+Proposed enhancements:
+
+- Regular threshold re-optimization  
+- Calibration techniques (Platt scaling / isotonic regression)  
+- Drift monitoring  
+- Time-based validation in production  
+
+---
+
+### Step 8 — Model Interpretability
+
+To ensure analyst trust and transparency:
+
+- Applied SHAP explainability  
+- Identified most influential risk features  
+- Generated both:
+  - Global model explanations  
+  - Local per-alert explanations  
+
+These insights validate model logic and support decision-making.
+
+---
+
+### Step 9 — AI-Augmented Development Process
+
+Development was accelerated using modern AI tools:
+
+- Cursor  
+- ChatGPT  
+- GitHub Copilot  
+
+These tools were used for:
+
+- Debugging  
+- Refactoring  
+- Performance optimization  
+- Standardizing project structure  
+
+---
+
+### Step 10 — Agentic AI Integration
+
+Built an intelligent SOC Triage Agent that can:
+
+- Select optimal decision thresholds  
+- Rank alerts by predicted risk  
+- Generate explanations  
+- Suggest remediation actions  
+
+Optional LLM components provide:
+
+- Executive SOC summaries  
+- Escalation recommendations  
+- Context-aware guidance  
+
+---
+
+### Step 11 — Business Delivery Layer
+
+A Streamlit-based interface was developed to:
+
+- Visualize prioritized alerts  
+- Display model predictions  
+- Present SHAP explanations  
+- Enable interactive analyst workflows  
+
+This transforms backend ML into a practical analyst-facing application.
+
+---
+
+## System Architecture
+
+![System Architecture](https://github.com/user-attachments/assets/c6c4b8de-243f-48e4-8694-dc94437daeea)
+
+---
+
+## Outcome
+
+This project evolved beyond a simple classifier into a full SOC decision-support platform that integrates:
+
+- Predictive modeling  
+- Threshold optimization  
+- Explainability  
+- Agentic AI workflows  
+- AI-assisted development  
+- User-friendly analytics delivery  
+
+It demonstrates how machine learning can be operationalized to meaningfully improve security operations.
+
+---
+
+## Technologies Used
+
+- Python  
+- Scikit-learn  
+- XGBoost / LightGBM  
+- SHAP  
+- Streamlit  
+- Pandas / NumPy  
+- AI coding assistants (Cursor, Copilot, ChatGPT)
+
+---
+
+## Dataset
+
+This project utilizes the **UNSW-NB15** cybersecurity dataset, a widely used benchmark for intrusion detection research.
+
+---
+
+## Future Work
+
+Planned extensions include:
+
+- Real-time streaming ingestion  
+- Continuous learning pipelines  
+- Active learning from analyst feedback  
+- Deployment to enterprise SOC environments  
+- Integration with SIEM platforms  
+
+---
+
+## Author
+
+Developed as an applied machine learning and AI systems project focused on practical cybersecurity impact.
+
