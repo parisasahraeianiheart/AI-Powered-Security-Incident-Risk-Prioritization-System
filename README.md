@@ -192,9 +192,9 @@ This transforms backend ML into a practical analyst-facing application.
 
 ---
 
-## System Architecture
+## Streamlit link
 
-![System Architecture](https://github.com/user-attachments/assets/c6c4b8de-243f-48e4-8694-dc94437daeea)
+https://ai-powered-security-incident-risk-prioritization-system-gnhvnh.streamlit.app/
 
 ---
 
