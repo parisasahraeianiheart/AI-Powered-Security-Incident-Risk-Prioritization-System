@@ -129,8 +129,6 @@ with st.sidebar:
                 st.session_state["model_logs"] = f"Failed to run model.py: {e}"
                 st.error("model.py failed. See logs below.")
 
-    with st.expander("Latest logs", expanded=False):
-        st.code(st.session_state.get("model_logs", "No logs yet."), language="text")
 
     st.divider()
     st.markdown("**Download report**")
