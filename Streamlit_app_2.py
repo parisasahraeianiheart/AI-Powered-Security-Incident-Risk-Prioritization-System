@@ -161,19 +161,19 @@ if page == "Overview":
 
         c1, c2, c3, c4 = st.columns(4, gap="medium")
         with c1:
-            st.markdown('<div class="kpi-card">', unsafe_allow_html=True)
+
             st.metric("Train rows", f"{data_info.get('train_rows', '-')}")
             st.markdown("</div>", unsafe_allow_html=True)
         with c2:
-            st.markdown('<div class="kpi-card">', unsafe_allow_html=True)
+
             st.metric("Test rows", f"{data_info.get('test_rows', '-')}")
             st.markdown("</div>", unsafe_allow_html=True)
         with c3:
-            st.markdown('<div class="kpi-card">', unsafe_allow_html=True)
+
             st.metric("Train + rate", f"{data_info.get('train_pos_rate', float('nan')):.3f}")
             st.markdown("</div>", unsafe_allow_html=True)
         with c4:
-            st.markdown('<div class="kpi-card">', unsafe_allow_html=True)
+
             st.metric("Test + rate", f"{data_info.get('test_pos_rate', float('nan')):.3f}")
             st.markdown("</div>", unsafe_allow_html=True)
 
