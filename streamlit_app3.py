@@ -21,9 +21,6 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parent
 DEFAULT_TRIAGE_JSON = ROOT / "triage_output.json"
 
-# Optional: if you keep a PDF report in your repo, users can download it
-DEFAULT_REPORT_PDF = ROOT / "SOC_Triage_Project_Report.pdf"
-
 
 # -----------------------------
 # Helpers
@@ -115,16 +112,6 @@ with st.sidebar:
     st.divider()
     st.header("Report")
 
-    if DEFAULT_REPORT_PDF.exists():
-        st.download_button(
-            label="⬇️ Download Report (PDF)",
-            data=DEFAULT_REPORT_PDF.read_bytes(),
-            file_name=DEFAULT_REPORT_PDF.name,
-            mime="application/pdf",
-            use_container_width=True,
-        )
-    else:
-        st.info("PDF not found in repo. Add it as SOC_Triage_Project_Report.pdf to enable download.")
 
 
 if not triage:
@@ -147,16 +134,11 @@ recall = metrics_at_t.get("recall", None)
 fpr = metrics_at_t.get("fpr", None)
 
 k1, k2, k3, k4, k5 = st.columns([1.2, 1.0, 1.0, 1.0, 1.0])
-k1.metric("Model", str(model_name))
-k2.metric("Mode", str(mode))
-k3.metric("Threshold (t*)", f"{threshold:.3f}" if isinstance(threshold, (int, float)) else "—")
 k4.metric("Precision", f"{precision:.3f}" if isinstance(precision, (int, float)) else "—")
 k5.metric("Recall", f"{recall:.3f}" if isinstance(recall, (int, float)) else "—")
 
 k6, k7, k8 = st.columns(3)
 k6.metric("FPR", f"{fpr:.3f}" if isinstance(fpr, (int, float)) else "—")
-k7.metric("C_FP", str(c_fp))
-k8.metric("C_FN", str(c_fn))
 
 if isinstance(cost_reduction, (int, float)):
     st.caption(f"Estimated cost reduction vs baseline threshold: **{100*cost_reduction:.2f}%**")
