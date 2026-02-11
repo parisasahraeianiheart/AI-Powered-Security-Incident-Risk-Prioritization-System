@@ -196,6 +196,8 @@ This transforms backend ML into a practical analyst-facing application.
 
 https://ai-powered-security-incident-risk-prioritization-system-gnhvnh.streamlit.app/
 
+https://ai-powered-security-incident-risk-prioritization-system-egz9lf.streamlit.app/
+
 ---
 
 ## Outcome
