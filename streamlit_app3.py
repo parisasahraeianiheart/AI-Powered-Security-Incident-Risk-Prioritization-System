@@ -109,8 +109,6 @@ with st.sidebar:
 
     search_text = st.text_input("Search (idx / explanation text)", value="")
 
-    st.divider()
-    st.header("Report")
 
 
 
