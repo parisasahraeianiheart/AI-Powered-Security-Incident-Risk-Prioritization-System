@@ -3,7 +3,7 @@ Streamlit dashboard for the UNSW-NB15 SOC triage project.
 
 Shows:
 - Model evaluation outputs produced by `model.py` (JSON + saved plots)
-- SHAP explainability plots produced by `XGBOOSTexpalin.py`
+- SHAP explainability plots produced by `XGBOOSTexplain.py`
 
 Run:
   streamlit run streamlit_app.py
@@ -271,13 +271,13 @@ elif page == "EDA":
 
 elif page == "SHAP":
     st.subheader("SHAP Explainability")
-    st.caption("Explainability plots produced by `XGBOOSTexpalin.py` (global importance, beeswarm, local waterfall).")
+    st.caption("Explainability plots produced by `XGBOOSTexplain.py` (global importance, beeswarm, local waterfall).")
 
     # show in a neat order
     for p in SHAP_PLOTS:
         _show_image_if_exists(p, p.name)
 
     st.info(
-        "If these are missing, run your SHAP script (e.g., `python3 XGBOOSTexpalin.py`) "
+        "If these are missing, run your SHAP script (e.g., `python3 XGBOOSTexplain.py`) "
         "and refresh the dashboard."
     )
