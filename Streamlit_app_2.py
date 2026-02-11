@@ -82,8 +82,7 @@ def _run_script(script_name: str, timeout_s: int = 600) -> str:
     return out.strip()
 
 
-def _find_pdfs(folder: Path) -> List[Path]:
-    return sorted(folder.glob("*.pdf"))
+
 
 
 # -----------------------------
@@ -133,25 +132,7 @@ with st.sidebar:
     st.divider()
     st.markdown("**Download report**")
 
-    pdfs = _find_pdfs(ROOT)
-    if pdfs:
-        chosen_pdf = st.selectbox(
-            "Select a PDF to download",
-            options=pdfs,
-            format_func=lambda p: p.name,
-        )
-        try:
-            st.download_button(
-                label=f"⬇️ Download {chosen_pdf.name}",
-                data=chosen_pdf.read_bytes(),
-                file_name=chosen_pdf.name,
-                mime="application/pdf",
-                use_container_width=True,
-            )
-        except Exception:
-            st.warning("Could not read the selected PDF file.")
-    else:
-        st.info("No PDF found in project folder. Put your report PDF next to this app (same directory).")
+
 
     st.divider()
     st.markdown("**Navigation**")
