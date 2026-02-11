@@ -18,8 +18,8 @@ from sklearn.metrics import (
 # Config (single source of truth)
 # -----------------------------
 ROOT = Path(__file__).resolve().parent
-TRAIN_CSV = ROOT / "UNSW_NB15_training-set.csv"
-TEST_CSV = ROOT / "UNSW_NB15_testing-set.csv"
+TRAIN_CSV = "UNSW_NB15_training-set.csv"
+TEST_CSV = "UNSW_NB15_testing-set.csv"
 
 RANDOM_STATE = 42
 C_FP = 1.0   # false alarm investigation cost

@@ -30,10 +30,7 @@ MAX_TRAIN_ROWS = 30000     # e.g., 20000-50000; set to None for full train
 
 
 def main():
-    if not TRAIN_CSV.exists() or not TEST_CSV.exists():
-        raise FileNotFoundError(
-            f"Expected {TRAIN_CSV.name} and {TEST_CSV.name} in the project root."
-        )
+
     train_df = pd.read_csv(TRAIN_CSV)
     test_df = pd.read_csv(TEST_CSV)
 

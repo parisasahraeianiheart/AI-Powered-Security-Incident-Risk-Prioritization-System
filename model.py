@@ -278,10 +278,6 @@ def oof_probabilities(pipeline, X, y, cv):
 # -----------------------------
 def main():
     # Load data (official split is our holdout boundary)
-    if not TRAIN_CSV.exists() or not TEST_CSV.exists():
-        raise FileNotFoundError(
-            "Expected UNSW_NB15_training-set.csv and UNSW_NB15_testing-set.csv in the repo root."
-        )
 
     train_df = pd.read_csv(TRAIN_CSV)
     test_df = pd.read_csv(TEST_CSV)
