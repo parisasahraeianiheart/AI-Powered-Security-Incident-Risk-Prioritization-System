@@ -1,382 +1,240 @@
 """
-SOC Triage Agent: threshold selection, explanation, and action suggestions.
+SOC Triage Dashboard (Cloud-safe)
 
-Usage:
-  python soc_triage_agent.py --model xgboost --mode min_cost --top_alerts 10
-  python soc_triage_agent.py --model xgboost --mode policy_precision --min_precision 0.70 --top_alerts 10
-  python soc_triage_agent.py --model xgboost --mode min_cost --top_alerts 10 --use_llm
+Reads ONLY triage_output.json produced by soc_triage_agent.py.
+Does NOT depend on training/testing CSVs (so it works on Streamlit Cloud).
+
+Run:
+  streamlit run streamlit_app.py
 """
 
 from __future__ import annotations
 
-import argparse
 import json
-import os
-import urllib.error
-import urllib.request
-import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Optional
 
-import numpy as np
 import pandas as pd
+import streamlit as st
 
-from preprocessing import get_feature_types
-from utils import (
-    TRAIN_CSV,
-    TEST_CSV,
-    C_FP,
-    C_FN,
-    split_xy,
-    expected_cost,
-    find_best_threshold,
-    eval_at_threshold,
-)
-from model import get_pipeline, best_recall_under_precision
-
-warnings.filterwarnings("ignore")
 
 ROOT = Path(__file__).resolve().parent
+DEFAULT_TRIAGE_JSON = ROOT / "triage_output.json"
 
-_SYSTEM_PROMPT = (
-    "You are a SOC triage copilot. Summarize alert queues and propose safe, practical next steps. "
-    "Be concise, avoid speculation, and clearly separate observed facts from recommendations."
+# Optional: if you keep a PDF report in your repo, users can download it
+DEFAULT_REPORT_PDF = ROOT / "SOC_Triage_Project_Report.pdf"
+
+
+# -----------------------------
+# Helpers
+# -----------------------------
+def load_json_bytes(data: bytes) -> Dict[str, Any]:
+    return json.loads(data.decode("utf-8"))
+
+
+def load_json_path(path: Path) -> Optional[Dict[str, Any]]:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def to_alerts_df(triage: Dict[str, Any]) -> pd.DataFrame:
+    alerts = triage.get("top_alerts", []) or triage.get("alerts", []) or []
+    if not alerts:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(alerts)
+
+    # normalize columns if some are missing
+    for col in ["idx", "p", "decision", "explanation", "suggested_actions"]:
+        if col not in df.columns:
+            df[col] = None
+
+    # make sure types are nice
+    if "p" in df.columns:
+        df["p"] = pd.to_numeric(df["p"], errors="coerce")
+
+    if "idx" in df.columns:
+        df["idx"] = pd.to_numeric(df["idx"], errors="coerce").astype("Int64")
+
+    return df.sort_values("p", ascending=False, na_position="last")
+
+
+def metric_get(triage: Dict[str, Any], path: list[str], default=None):
+    cur: Any = triage
+    for k in path:
+        if not isinstance(cur, dict) or k not in cur:
+            return default
+        cur = cur[k]
+    return cur
+
+
+# -----------------------------
+# UI
+# -----------------------------
+st.set_page_config(
+    page_title="SOC Triage Dashboard",
+    layout="wide",
+    page_icon="🛡️",
 )
 
+st.title("🛡️ SOC Triage Dashboard")
+st.caption("Human-in-the-loop triage using threshold policy + optional AI brief (from triage_output.json).")
 
-# -----------------------------
-# Helpers: safe JSON
-# -----------------------------
-def _to_jsonable(x: Any) -> Any:
-    """Convert numpy/pandas objects into JSON-serializable python types."""
-    if isinstance(x, (np.integer,)):
-        return int(x)
-    if isinstance(x, (np.floating,)):
-        return float(x)
-    if isinstance(x, (np.ndarray,)):
-        return x.tolist()
-    if isinstance(x, (pd.Series,)):
-        return x.to_dict()
-    if isinstance(x, (pd.DataFrame,)):
-        return x.to_dict(orient="records")
-    if isinstance(x, (Path,)):
-        return str(x)
-    return x
+with st.sidebar:
+    st.header("Data Source")
 
+    uploaded = st.file_uploader("Upload triage_output.json", type=["json"])
+    use_local = st.checkbox("Use local triage_output.json (repo file)", value=(uploaded is None))
 
-def write_json(path: Path, obj: Dict[str, Any]) -> None:
-    path.write_text(json.dumps(obj, indent=2, default=_to_jsonable))
-
-
-# -----------------------------
-# LLM
-# -----------------------------
-def llm_soc_brief(
-    context: Dict[str, Any],
-    api_key: str,
-    model: str,
-    timeout_s: int = 30,
-) -> str:
-    """
-    Simple LLM call for SOC summarization (stdlib-only).
-
-    Enable by setting OPENAI_API_KEY and running with --use_llm.
-    """
-    url = "https://api.openai.com/v1/chat/completions"
-
-    user_prompt = (
-        "Given the JSON context below, produce:\n"
-        "1) Executive summary (3-6 sentences)\n"
-        "2) Prioritized recommended analyst actions (5-10 bullets)\n"
-        "3) Escalation criteria (bullets)\n"
-        "4) Key questions / data to pull next (bullets)\n\n"
-        "Keep it SOC-friendly and concrete. Avoid vendor-specific claims.\n\n"
-        f"CONTEXT_JSON:\n{json.dumps(context, indent=2, default=_to_jsonable)}"
-    )
-
-    payload = {
-        "model": model,
-        "temperature": 0.2,
-        "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-    }
-
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
-    )
-
-    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-        raw = resp.read().decode("utf-8")
-        data = json.loads(raw)
-        return data["choices"][0]["message"]["content"].strip()
-
-
-# -----------------------------
-# Threshold + cost helpers
-# -----------------------------
-def cost_reduction_vs_baseline(
-    y_true: np.ndarray,
-    y_prob: np.ndarray,
-    t_opt: float,
-    t_base: float = 0.5,
-    c_fp: float = C_FP,
-    c_fn: float = C_FN,
-) -> Tuple[float, float, float]:
-    base_cost = expected_cost(y_true, y_prob, t_base, c_fp, c_fn)
-    opt_cost = expected_cost(y_true, y_prob, t_opt, c_fp, c_fn)
-    reduction = (base_cost - opt_cost) / (base_cost + 1e-12)
-    return float(base_cost), float(opt_cost), float(reduction)
-
-
-# -----------------------------
-# Explanation (heuristic, SOC-friendly)
-# -----------------------------
-def explain_alert_heuristic(row: pd.Series, prob: float) -> Tuple[str, List[str]]:
-    key_cols = [
-        "sttl",
-        "ct_state_ttl",
-        "sbytes",
-        "ct_dst_sport_ltm",
-        "ct_srv_src",
-        "dload",
-        "ct_dst_src_ltm",
-        "smean",
-        "ct_srv_dst",
-    ]
-    present = [(c, row[c]) for c in key_cols if c in row.index]
-    present = present[:6]
-
-    msg = [f"Risk score p={prob:.3f} driven by network behavior/volume/TTL signals."]
-    if present:
-        msg.append(
-            "Top observed signals (raw feature values): "
-            + ", ".join([f"{k}={_to_jsonable(v)}" for k, v in present])
-        )
-
-    actions: List[str] = []
-    if "sttl" in row.index:
-        actions.append("Validate TTL consistency (possible spoofing / scanning artifacts).")
-    if "ct_srv_src" in row.index or "ct_dst_sport_ltm" in row.index:
-        actions.append("Check repeated connections to same service/port (scan/bruteforce patterns).")
-    if "sbytes" in row.index or "dload" in row.index:
-        actions.append("Inspect unusual traffic volume/throughput (possible exfil/C2).")
-    if not actions:
-        actions.append("Review source/destination context and validate service/port behavior.")
-
-    return " ".join(msg), actions
-
-
-# -----------------------------
-# Main
-# -----------------------------
-def main():
-    parser = argparse.ArgumentParser(description="SOC Triage Agent (threshold + explanation + action suggestions)")
-    parser.add_argument("--model", default="xgboost", choices=["logreg", "svm_linear", "xgboost", "lightgbm"])
-    parser.add_argument("--mode", default="min_cost", choices=["min_cost", "policy_precision"])
-    parser.add_argument("--min_precision", type=float, default=0.70)
-    parser.add_argument("--top_alerts", type=int, default=10)
-    parser.add_argument("--baseline_threshold", type=float, default=0.5)
-
-    parser.add_argument("--use_llm", action="store_true", help="Use LLM to summarize and suggest final next steps.")
-    parser.add_argument("--llm_model", default=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"))
-    parser.add_argument("--llm_timeout_s", type=int, default=30)
-    parser.add_argument("--llm_max_alerts", type=int, default=10)
-
-    # NEW: always produce a JSON file for dashboards
-    parser.add_argument("--save_json", action="store_true", help="Write triage_output.json (recommended).")
-    parser.add_argument("--json_path", default=str(ROOT / "triage_output.json"))
-
-    args = parser.parse_args()
-
-    # --- Make train/test paths robust (TRAIN_CSV may be str or Path)
-    train_csv = Path(TRAIN_CSV) if not isinstance(TRAIN_CSV, Path) else TRAIN_CSV
-    test_csv = Path(TEST_CSV) if not isinstance(TEST_CSV, Path) else TEST_CSV
-
-    if not train_csv.is_absolute():
-        train_csv = ROOT / train_csv
-    if not test_csv.is_absolute():
-        test_csv = ROOT / test_csv
-
-    if not train_csv.exists() or not test_csv.exists():
-        raise FileNotFoundError(f"Expected {train_csv.name} and {test_csv.name} in the project root.")
-
-    train_df = pd.read_csv(train_csv)
-    test_df = pd.read_csv(test_csv)
-
-    X_train, y_train = split_xy(train_df)
-    X_test, y_test = split_xy(test_df)
-
-    num_cols, cat_cols = get_feature_types(X_train)
-
-    neg = int(np.sum(y_train == 0))
-    pos = int(np.sum(y_train == 1))
-    spw = float(neg / max(pos, 1))
-
-    print("\n=== SOC TRIAGE AGENT ===")
-    print(f"Model: {args.model}")
-    print(f"Mode: {args.mode}")
-    print(f"Cost model: C_FP={C_FP}, C_FN={C_FN}")
-    if args.mode == "policy_precision":
-        print(f"Policy constraint: precision >= {args.min_precision:.2f}")
-
-    pipe = get_pipeline(args.model, num_cols, cat_cols, spw)
-
-    print("\nTraining on official training split...")
-    pipe.fit(X_train, y_train)
-
-    print("Scoring holdout test split...")
-    prob_test = pipe.predict_proba(X_test)[:, 1]
-
-    best_t: float
-    stats: Dict[str, Any]
-
-    if args.mode == "min_cost":
-        best_t, _, _ = find_best_threshold(y_test, prob_test, C_FP, C_FN)
-        stats = eval_at_threshold(y_test, prob_test, best_t)
-
-        base_cost, opt_cost, reduction = cost_reduction_vs_baseline(
-            y_test, prob_test, best_t, t_base=args.baseline_threshold, c_fp=C_FP, c_fn=C_FN
-        )
-
-        print("\n--- Agent Decision (Min Cost) ---")
-        print(f"Chosen threshold t* = {best_t:.3f}")
-        print(f"Baseline cost @ t={args.baseline_threshold:.2f}: {base_cost:.0f}")
-        print(f"Optimized cost @ t*={best_t:.3f}: {opt_cost:.0f}")
-        print(f"Cost reduction vs baseline: {100*reduction:.2f}%")
-        print(f"Precision={stats['precision']:.3f} | Recall={stats['recall']:.3f} | FPR={stats['fpr']:.3f}")
-        print(f"Confusion: TP={stats['tp']} FP={stats['fp']} FN={stats['fn']} TN={stats['tn']}")
-
-    else:
-        policy = best_recall_under_precision(y_test, prob_test, min_precision=args.min_precision)
-        print("\n--- Agent Decision (Policy: max recall s.t. precision constraint) ---")
-        if policy is None:
-            print(f"No threshold achieves precision >= {args.min_precision:.2f}.")
-            print("Suggestion: lower constraint, calibrate probabilities, or apply analyst-capacity constraints.")
-            return
-        _r, _p, best_t = policy
-        stats = eval_at_threshold(y_test, prob_test, best_t)
-        print(f"Chosen threshold t = {best_t:.3f}")
-        print(f"Precision={stats['precision']:.3f} | Recall={stats['recall']:.3f} | FPR={stats['fpr']:.3f}")
-        print(f"Confusion: TP={stats['tp']} FP={stats['fp']} FN={stats['fn']} TN={stats['tn']}")
-
-    # --- Top alerts
-    idx_sorted = np.argsort(-prob_test)
-    topn = min(args.top_alerts, len(idx_sorted))
-    top_idx = idx_sorted[:topn]
-
-    print("\n--- Top Alerts (ranked by risk) ---")
-    for rank, i in enumerate(top_idx, start=1):
-        decision = "ESCALATE" if prob_test[i] >= best_t else "DEPRIORITIZE"
-        print(f"{rank:02d}. idx={int(i)}  p={prob_test[i]:.3f}  decision={decision}")
-
-    print("\n--- Example Explanations + Action Suggestions ---")
-
-    triage_alerts: List[Dict[str, Any]] = []
-    for i in top_idx:
-        row = X_test.iloc[int(i)]
-        p = float(prob_test[i])
-        decision = "ESCALATE" if p >= float(best_t) else "DEPRIORITIZE"
-        explanation, actions = explain_alert_heuristic(row, p)
-
-        triage_alerts.append(
-            {
-                "idx": int(i),
-                "p": p,
-                "decision": decision,
-                "explanation": explanation,
-                "suggested_actions": actions,
-            }
-        )
-
-    # Print only first 5 like before
-    for a in triage_alerts[: min(5, len(triage_alerts))]:
-        print(f"\nAlert idx={a['idx']} | p={a['p']:.3f} | decision={a['decision']}")
-        print("Explanation:", a["explanation"])
-        print("Suggested actions:")
-        for act in a["suggested_actions"]:
-            print(" -", act)
-
-    # --- Optional LLM brief
-    llm_brief: str | None = None
-    llm_error: str | None = None
-
-    if args.use_llm:
-        api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-        if not api_key:
-            print("\n--- Agentic AI Brief (skipped) ---")
-            print("Set env var OPENAI_API_KEY to enable LLM summarization.")
-            llm_error = "OPENAI_API_KEY not set"
+    triage: Optional[Dict[str, Any]] = None
+    if uploaded is not None:
+        try:
+            triage = load_json_bytes(uploaded.read())
+            st.success("Using: uploaded JSON")
+        except Exception as e:
+            st.error(f"Could not read uploaded JSON: {e}")
+    elif use_local:
+        triage = load_json_path(DEFAULT_TRIAGE_JSON)
+        if triage:
+            st.success("Using: local triage_output.json")
         else:
-            llm_top_n = min(int(args.llm_max_alerts), len(triage_alerts))
-            llm_context: Dict[str, Any] = {
-                "model": args.model,
-                "mode": args.mode,
-                "cost_model": {"C_FP": float(C_FP), "C_FN": float(C_FN)},
-                "threshold": float(best_t),
-                "metrics_at_threshold": stats,
-                "top_alerts": triage_alerts[:llm_top_n],
-                "notes": [
-                    "LLM output is advisory; validate against logs and environment context.",
-                    "Decisions above are computed from deterministic metrics; LLM is used only for summarization/suggestions.",
-                ],
-            }
+            st.warning("No local triage_output.json found. Upload one above.")
 
-            print("\n--- Agentic AI Brief (LLM) ---")
-            try:
-                llm_brief = llm_soc_brief(
-                    llm_context,
-                    api_key=api_key,
-                    model=str(args.llm_model),
-                    timeout_s=int(args.llm_timeout_s),
-                )
-                print(llm_brief)
-            except (urllib.error.URLError, urllib.error.HTTPError, KeyError, json.JSONDecodeError) as e:
-                llm_error = str(e)
-                print(f"LLM call failed: {e}")
-                print("Falling back to heuristic explanations above.")
+    st.divider()
+    st.header("Filters")
 
-    # --- NEW: write triage_output.json for Streamlit/dashboard use
-    if args.save_json or True:
-        out_path = Path(args.json_path)
-        if not out_path.is_absolute():
-            out_path = ROOT / out_path
+    decision_filter = st.multiselect("Decision", ["ESCALATE", "DEPRIORITIZE"], default=["ESCALATE"])
+    p_min, p_max = st.slider("Probability range (p)", 0.0, 1.0, (0.0, 1.0), 0.01)
 
-        output: Dict[str, Any] = {
-            "run": {
-                "model": args.model,
-                "mode": args.mode,
-                "cost_model": {"C_FP": float(C_FP), "C_FN": float(C_FN)},
-                "baseline_threshold": float(args.baseline_threshold),
-                "threshold_selected": float(best_t),
-            },
-            "metrics_at_threshold": stats,
-            "top_alerts": triage_alerts,
-            "llm": {
-                "enabled": bool(args.use_llm),
-                "model": str(args.llm_model),
-                "brief": llm_brief,
-                "error": llm_error,
-            },
-        }
+    search_text = st.text_input("Search (idx / explanation text)", value="")
 
-        write_json(out_path, output)
-        print(f"\n[OK] Wrote dashboard output JSON: {out_path}")
+    st.divider()
+    st.header("Report")
 
-    print("\n--- Agent Guardrails / Limitations ---")
-    print("1) Agent decisions are computed from deterministic metrics (no free-form hallucinated actions).")
-    print("2) If data distribution shifts, thresholds should be re-optimized and probabilities recalibrated.")
-    print("3) This agent uses heuristic explanations; you can optionally replace/augment with SHAP local explanations.")
-    if args.use_llm:
-        print("4) LLM brief (if enabled) is advisory; treat it as a drafting aid, not ground truth.")
+    if DEFAULT_REPORT_PDF.exists():
+        st.download_button(
+            label="⬇️ Download Report (PDF)",
+            data=DEFAULT_REPORT_PDF.read_bytes(),
+            file_name=DEFAULT_REPORT_PDF.name,
+            mime="application/pdf",
+            use_container_width=True,
+        )
+    else:
+        st.info("PDF not found in repo. Add it as SOC_Triage_Project_Report.pdf to enable download.")
 
 
-if __name__ == "__main__":
-    main()
+if not triage:
+    st.stop()
+
+# -----------------------------
+# Top summary KPIs
+# -----------------------------
+model_name = triage.get("model", "—")
+mode = triage.get("mode", "—")
+c_fp = metric_get(triage, ["cost_model", "C_FP"], "—")
+c_fn = metric_get(triage, ["cost_model", "C_FN"], "—")
+
+threshold = triage.get("threshold", triage.get("best_threshold", None))
+cost_reduction = triage.get("cost_reduction_vs_baseline", triage.get("cost_reduction", None))
+
+metrics_at_t = triage.get("metrics_at_threshold", {}) or {}
+precision = metrics_at_t.get("precision", None)
+recall = metrics_at_t.get("recall", None)
+fpr = metrics_at_t.get("fpr", None)
+
+k1, k2, k3, k4, k5 = st.columns([1.2, 1.0, 1.0, 1.0, 1.0])
+k1.metric("Model", str(model_name))
+k2.metric("Mode", str(mode))
+k3.metric("Threshold (t*)", f"{threshold:.3f}" if isinstance(threshold, (int, float)) else "—")
+k4.metric("Precision", f"{precision:.3f}" if isinstance(precision, (int, float)) else "—")
+k5.metric("Recall", f"{recall:.3f}" if isinstance(recall, (int, float)) else "—")
+
+k6, k7, k8 = st.columns(3)
+k6.metric("FPR", f"{fpr:.3f}" if isinstance(fpr, (int, float)) else "—")
+k7.metric("C_FP", str(c_fp))
+k8.metric("C_FN", str(c_fn))
+
+if isinstance(cost_reduction, (int, float)):
+    st.caption(f"Estimated cost reduction vs baseline threshold: **{100*cost_reduction:.2f}%**")
+
+st.divider()
+
+# -----------------------------
+# Alert Queue + Risk Distribution
+# -----------------------------
+alerts_df = to_alerts_df(triage)
+
+left, right = st.columns([1.25, 0.95], gap="large")
+
+with left:
+    st.subheader("🚨 Alert Queue")
+
+    if alerts_df.empty:
+        st.warning("No alerts found in JSON. Expected key: `top_alerts` (list).")
+    else:
+        df = alerts_df.copy()
+
+        # filter by decision, probability range, search text
+        df = df[df["decision"].isin(decision_filter)]
+        df = df[(df["p"] >= p_min) & (df["p"] <= p_max)]
+
+        if search_text.strip():
+            s = search_text.strip().lower()
+            df = df[
+                df["idx"].astype(str).str.contains(s, na=False)
+                | df["explanation"].astype(str).str.lower().str.contains(s, na=False)
+            ]
+
+        st.caption("Ranked by risk probability (p). Click a row in the table using the selector below.")
+
+        show_cols = ["idx", "p", "decision"]
+        if "attack_cat" in df.columns:
+            show_cols.append("attack_cat")
+
+        st.dataframe(
+            df[show_cols].reset_index(drop=True),
+            use_container_width=True,
+            height=340,
+        )
+
+        st.subheader("📊 Risk Distribution")
+        st.bar_chart(df["p"].dropna(), use_container_width=True)
+
+with right:
+    st.subheader("🧾 Alert Details")
+
+    if alerts_df.empty:
+        st.info("Upload a triage_output.json with `top_alerts` to see alert details.")
+    else:
+        # pick an alert
+        idx_list = alerts_df["idx"].dropna().astype(int).tolist()
+        chosen_idx = st.selectbox("Select alert idx", idx_list, index=0)
+
+        row = alerts_df[alerts_df["idx"] == chosen_idx].iloc[0].to_dict()
+
+        st.markdown(f"**Alert idx:** `{row.get('idx')}`")
+        st.markdown(f"**Probability (p):** `{row.get('p'):.3f}`" if isinstance(row.get("p"), (int, float)) else "**Probability (p):** —")
+        st.markdown(f"**Decision:** `{row.get('decision')}`")
+
+        st.divider()
+        st.markdown("### Explanation")
+        st.write(row.get("explanation", "—"))
+
+        st.markdown("### Suggested Actions")
+        actions = row.get("suggested_actions") or []
+        if isinstance(actions, list) and actions:
+            for a in actions:
+                st.write(f"- {a}")
+        else:
+            st.write("—")
+
+        # optional: show the LLM brief if present
+        llm_brief = triage.get("llm_brief", None)
+        if llm_brief:
+            st.divider()
+            st.markdown("### AI Brief (Queue-level)")
+            st.write(llm_brief)
