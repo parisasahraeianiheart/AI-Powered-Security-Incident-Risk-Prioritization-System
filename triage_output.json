@@ -1,0 +1,140 @@
+{
+  "run": {
+    "model": "xgboost",
+    "mode": "min_cost",
+    "cost_model": {
+      "C_FP": 1.0,
+      "C_FN": 20.0
+    },
+    "baseline_threshold": 0.5,
+    "threshold_selected": 0.064
+  },
+  "metrics_at_threshold": {
+    "threshold": 0.064,
+    "tn": 21366,
+    "fp": 15634,
+    "fn": 0,
+    "tp": 45332,
+    "precision": 0.7435619853688942,
+    "recall": 1.0,
+    "fpr": 0.4225405405405405
+  },
+  "top_alerts": [
+    {
+      "idx": 13182,
+      "p": 0.9999887943267822,
+      "decision": "ESCALATE",
+      "explanation": "Risk score p=1.000 driven by network behavior/volume/TTL signals. Top observed signals (raw feature values): sttl=254, ct_state_ttl=2, sbytes=114, ct_dst_sport_ltm=18, ct_srv_src=45, dload=0.0",
+      "suggested_actions": [
+        "Validate TTL consistency (possible spoofing / scanning artifacts).",
+        "Check repeated connections to same service/port (scan/bruteforce patterns).",
+        "Inspect unusual traffic volume/throughput (possible exfil/C2)."
+      ]
+    },
+    {
+      "idx": 12521,
+      "p": 0.9999887943267822,
+      "decision": "ESCALATE",
+      "explanation": "Risk score p=1.000 driven by network behavior/volume/TTL signals. Top observed signals (raw feature values): sttl=254, ct_state_ttl=2, sbytes=114, ct_dst_sport_ltm=15, ct_srv_src=45, dload=0.0",
+      "suggested_actions": [
+        "Validate TTL consistency (possible spoofing / scanning artifacts).",
+        "Check repeated connections to same service/port (scan/bruteforce patterns).",
+        "Inspect unusual traffic volume/throughput (possible exfil/C2)."
+      ]
+    },
+    {
+      "idx": 12525,
+      "p": 0.9999887943267822,
+      "decision": "ESCALATE",
+      "explanation": "Risk score p=1.000 driven by network behavior/volume/TTL signals. Top observed signals (raw feature values): sttl=254, ct_state_ttl=2, sbytes=114, ct_dst_sport_ltm=15, ct_srv_src=45, dload=0.0",
+      "suggested_actions": [
+        "Validate TTL consistency (possible spoofing / scanning artifacts).",
+        "Check repeated connections to same service/port (scan/bruteforce patterns).",
+        "Inspect unusual traffic volume/throughput (possible exfil/C2)."
+      ]
+    },
+    {
+      "idx": 13486,
+      "p": 0.9999887943267822,
+      "decision": "ESCALATE",
+      "explanation": "Risk score p=1.000 driven by network behavior/volume/TTL signals. Top observed signals (raw feature values): sttl=254, ct_state_ttl=2, sbytes=114, ct_dst_sport_ltm=18, ct_srv_src=45, dload=0.0",
+      "suggested_actions": [
+        "Validate TTL consistency (possible spoofing / scanning artifacts).",
+        "Check repeated connections to same service/port (scan/bruteforce patterns).",
+        "Inspect unusual traffic volume/throughput (possible exfil/C2)."
+      ]
+    },
+    {
+      "idx": 13491,
+      "p": 0.9999887943267822,
+      "decision": "ESCALATE",
+      "explanation": "Risk score p=1.000 driven by network behavior/volume/TTL signals. Top observed signals (raw feature values): sttl=254, ct_state_ttl=2, sbytes=114, ct_dst_sport_ltm=18, ct_srv_src=45, dload=0.0",
+      "suggested_actions": [
+        "Validate TTL consistency (possible spoofing / scanning artifacts).",
+        "Check repeated connections to same service/port (scan/bruteforce patterns).",
+        "Inspect unusual traffic volume/throughput (possible exfil/C2)."
+      ]
+    },
+    {
+      "idx": 22401,
+      "p": 0.9999887943267822,
+      "decision": "ESCALATE",
+      "explanation": "Risk score p=1.000 driven by network behavior/volume/TTL signals. Top observed signals (raw feature values): sttl=254, ct_state_ttl=2, sbytes=114, ct_dst_sport_ltm=18, ct_srv_src=45, dload=0.0",
+      "suggested_actions": [
+        "Validate TTL consistency (possible spoofing / scanning artifacts).",
+        "Check repeated connections to same service/port (scan/bruteforce patterns).",
+        "Inspect unusual traffic volume/throughput (possible exfil/C2)."
+      ]
+    },
+    {
+      "idx": 22400,
+      "p": 0.9999887943267822,
+      "decision": "ESCALATE",
+      "explanation": "Risk score p=1.000 driven by network behavior/volume/TTL signals. Top observed signals (raw feature values): sttl=254, ct_state_ttl=2, sbytes=114, ct_dst_sport_ltm=18, ct_srv_src=45, dload=0.0",
+      "suggested_actions": [
+        "Validate TTL consistency (possible spoofing / scanning artifacts).",
+        "Check repeated connections to same service/port (scan/bruteforce patterns).",
+        "Inspect unusual traffic volume/throughput (possible exfil/C2)."
+      ]
+    },
+    {
+      "idx": 22287,
+      "p": 0.9999887943267822,
+      "decision": "ESCALATE",
+      "explanation": "Risk score p=1.000 driven by network behavior/volume/TTL signals. Top observed signals (raw feature values): sttl=254, ct_state_ttl=2, sbytes=114, ct_dst_sport_ltm=18, ct_srv_src=45, dload=0.0",
+      "suggested_actions": [
+        "Validate TTL consistency (possible spoofing / scanning artifacts).",
+        "Check repeated connections to same service/port (scan/bruteforce patterns).",
+        "Inspect unusual traffic volume/throughput (possible exfil/C2)."
+      ]
+    },
+    {
+      "idx": 13483,
+      "p": 0.9999887943267822,
+      "decision": "ESCALATE",
+      "explanation": "Risk score p=1.000 driven by network behavior/volume/TTL signals. Top observed signals (raw feature values): sttl=254, ct_state_ttl=2, sbytes=114, ct_dst_sport_ltm=18, ct_srv_src=45, dload=0.0",
+      "suggested_actions": [
+        "Validate TTL consistency (possible spoofing / scanning artifacts).",
+        "Check repeated connections to same service/port (scan/bruteforce patterns).",
+        "Inspect unusual traffic volume/throughput (possible exfil/C2)."
+      ]
+    },
+    {
+      "idx": 12529,
+      "p": 0.9999887943267822,
+      "decision": "ESCALATE",
+      "explanation": "Risk score p=1.000 driven by network behavior/volume/TTL signals. Top observed signals (raw feature values): sttl=254, ct_state_ttl=2, sbytes=114, ct_dst_sport_ltm=15, ct_srv_src=45, dload=0.0",
+      "suggested_actions": [
+        "Validate TTL consistency (possible spoofing / scanning artifacts).",
+        "Check repeated connections to same service/port (scan/bruteforce patterns).",
+        "Inspect unusual traffic volume/throughput (possible exfil/C2)."
+      ]
+    }
+  ],
+  "llm": {
+    "enabled": false,
+    "model": "gpt-4o-mini",
+    "brief": null,
+    "error": null
+  }
+}
